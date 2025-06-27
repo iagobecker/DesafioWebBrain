@@ -17,7 +17,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
 
-    $sql = "SELECT id, nome_completo, senha FROM usuarios WHERE email = ? LIMIT 1";
+    $sql = "SELECT id, nome_completo, senha, email_validado FROM usuarios WHERE email = ? LIMIT 1";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("s", $email);
     $stmt->execute();
@@ -25,6 +25,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     if ($result->num_rows === 1) {
         $usuario = $result->fetch_assoc();
+
+        if ($usuario['email_validado'] == 0) {
+            $response['message'] = 'Seu e-mail ainda não foi validado. Por favor, verifique sua caixa de entrada e clique no link de validação.';
+            echo json_encode($response);
+            exit();
+        }
 
         if (password_verify($senha, $usuario['senha'])) {
             $_SESSION['usuario_id'] = $usuario['id'];

@@ -1,8 +1,13 @@
 <?php
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+require '../../vendor/autoload.php';
+
 require_once '../db_connect.php';
 
 header('Content-Type: application/json');
-
 $response = ['success' => false, 'message' => 'Ocorreu um erro.'];
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
@@ -23,60 +28,58 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
     }
 
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $response['message'] = "Formato de e-mail inválido.";
-        echo json_encode($response);
-        exit();
-    }
-
-    if ($senha !== $confirma_senha) {
-        $response['message'] = "As senhas não coincidem.";
-        echo json_encode($response);
-        exit();
-    }
-
-    $hoje = new DateTime();
-    $nascimento = new DateTime($data_nascimento);
-    $idade = $hoje->diff($nascimento)->y;
-    if ($idade < 18) {
-        $response['message'] = "O usuário deve ter mais de 18 anos.";
-        echo json_encode($response);
-        exit();
-    }
-
-    $sql_check = "SELECT id FROM usuarios WHERE email = ?";
-    $stmt_check = $conn->prepare($sql_check);
+    $stmt_check = $conn->prepare("SELECT id FROM usuarios WHERE email = ?");
     $stmt_check->bind_param("s", $email);
     $stmt_check->execute();
-    $stmt_check->store_result();
-
-    if ($stmt_check->num_rows > 0) {
+    if ($stmt_check->get_result()->num_rows > 0) {
         $response['message'] = "Este e-mail já está cadastrado.";
-        $stmt_check->close();
-        $conn->close();
         echo json_encode($response);
         exit();
     }
-    $stmt_check->close();
+
+    $codigo_validacao = md5(uniqid(rand(), true));
 
     $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
 
-    $sql_insert = "INSERT INTO usuarios (nome_completo, data_nascimento, email, telefone, whatsapp, estado, cidade, senha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    $sql_insert = "INSERT INTO usuarios (nome_completo, data_nascimento, email, telefone, whatsapp, estado, cidade, senha, codigo_validacao) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
     $stmt_insert = $conn->prepare($sql_insert);
-
-    $stmt_insert->bind_param("ssssssss", $nome_completo, $data_nascimento, $email, $telefone, $whatsapp, $estado, $cidade, $senha_hash);
+    $stmt_insert->bind_param("sssssssss", $nome_completo, $data_nascimento, $email, $telefone, $whatsapp, $estado, $cidade, $senha_hash, $codigo_validacao);
 
     if ($stmt_insert->execute()) {
-        $response['success'] = true;
-        $response['message'] = "Cadastro realizado com sucesso! Você já pode fazer login.";
+        $mail = new PHPMailer(true);
+        try {
+            $mail->isSMTP();
+            $mail->Host       = 'smtp.gmail.com';
+            $mail->SMTPAuth   = true;
+            $mail->Username   = 'iagosbm97@gmail.com';
+            $mail->Password   = 'ikjh rshp dktk kmea';
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port       = 465;
+            $mail->CharSet    = 'UTF-8';
+
+            $mail->setFrom('iagosbm97@gmail.com', 'Prefeitura - Chamados de TI');
+            $mail->addAddress($email, $nome_completo);
+
+            $mail->isHTML(true);
+            $mail->Subject = 'Valide seu cadastro no Sistema de Chamados';
+            $link_validacao = "http://localhost/prefeitura_chamados/validar_email.php?codigo=" . $codigo_validacao;
+            $mail->Body    = "Olá, $nome_completo!<br><br>Obrigado por se cadastrar. Por favor, clique no link abaixo para validar seu e-mail e ativar sua conta:<br><br><a href='$link_validacao'>Validar Meu E-mail</a><br><br>Se você não se cadastrou, por favor ignore este e-mail.<br><br>Atenciosamente,<br>Equipe de TI da Prefeitura";
+            $mail->AltBody = "Olá, $nome_completo!\n\nObrigado por se cadastrar. Por favor, copie e cole o seguinte link no seu navegador para validar seu e-mail e ativar sua conta:\n$link_validacao\n\nAtenciosamente,\nEquipe de TI da Prefeitura";
+
+            $mail->send();
+
+            $response['success'] = true;
+            $response['message'] = 'Cadastro realizado com sucesso! Um e-mail de validação foi enviado para sua caixa de entrada.';
+        } catch (Exception $e) {
+            $response['success'] = true;
+            $response['message'] = "Cadastro realizado, mas houve um erro ao enviar o e-mail de validação. Erro: {$mail->ErrorInfo}";
+        }
     } else {
         $response['message'] = "Erro ao realizar o cadastro. Tente novamente.";
     }
 
     $stmt_insert->close();
     $conn->close();
-} else {
-    $response['message'] = "Método de requisição inválido.";
 }
 
 echo json_encode($response);

@@ -13,7 +13,7 @@ CREATE TABLE usuarios (
     senha VARCHAR(255) NOT NULL,
     cidade VARCHAR(100),
     estado VARCHAR(100),
-    codigo_validacao VARCHAR(10),
+    codigo_validacao VARCHAR(255) UNIQUE,
     email_validado BOOLEAN DEFAULT FALSE,
     data_cadastro DATETIME DEFAULT CURRENT_TIMESTAMP
 );
